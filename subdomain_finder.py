@@ -70,6 +70,34 @@ def fetch_alienvault(domain):
         print(f"    Erreur AlienVault: {e}")
     return subdomains
 
+def find_subdomains_iterative(domain):
+    """
+    Générateur qui renvoie la progression et les résultats.
+    Yields: dict avec 'step', 'message', 'progress', et éventuellement 'data'
+    """
+    yield {"step": "init", "message": f"Démarrage de la recherche pour {domain}...", "progress": 5}
+    
+    results = set()
+    
+    yield {"step": "crtsh", "message": "Interrogation de crt.sh...", "progress": 10}
+    results.update(fetch_crtsh(domain))
+    yield {"step": "crtsh_done", "message": "crt.sh terminé", "progress": 40}
+    
+    yield {"step": "hackertarget", "message": "Interrogation de HackerTarget...", "progress": 45}
+    results.update(fetch_hackertarget(domain))
+    yield {"step": "hackertarget_done", "message": "HackerTarget terminé", "progress": 70}
+    
+    yield {"step": "alienvault", "message": "Interrogation de AlienVault OTX...", "progress": 75}
+    results.update(fetch_alienvault(domain))
+    yield {"step": "alienvault_done", "message": "AlienVault terminé", "progress": 95}
+    
+    # Sauvegarde
+    yield {"step": "saving", "message": "Sauvegarde des résultats...", "progress": 98}
+    save_to_file(domain, results)
+    
+    final_list = sorted(list(results))
+    yield {"step": "finish", "message": f"Terminé ! {len(final_list)} sous-domaines trouvés.", "progress": 100, "data": final_list}
+
 def save_to_file(domain, new_subdomains):
     # Création du dossier de résultats
     output_dir = "resultats"

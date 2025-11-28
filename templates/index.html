@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subdomain Finder Moderne</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .glass {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen text-slate-800">
+
+    <div class="container mx-auto px-4 py-12 max-w-4xl">
+        
+        <!-- Header -->
+        <div class="text-center mb-12">
+            <h1 class="text-5xl font-bold text-indigo-600 mb-4 tracking-tight">Subdomain Finder</h1>
+            <p class="text-xl text-slate-500">Découvrez tous les sous-domaines en quelques secondes.</p>
+        </div>
+
+        <!-- Search Box -->
+        <div class="glass bg-white rounded-2xl shadow-xl p-8 mb-8 transition-all duration-300 hover:shadow-2xl">
+            <div class="flex flex-col md:flex-row gap-4">
+                <input type="text" id="domainInput" placeholder="Entrez un domaine (ex: google.com)" 
+                    class="flex-1 px-6 py-4 rounded-xl border border-slate-200 bg-slate-50 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
+                    onkeypress="handleEnter(event)">
+                <button onclick="startSearch()" id="searchBtn"
+                    class="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-lg shadow-lg shadow-indigo-200 transition-all transform hover:scale-105 active:scale-95 flex items-center justify-center gap-2">
+                    <span>Rechercher</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Progress Section (Hidden by default) -->
+        <div id="progressSection" class="hidden mb-8">
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <div class="flex justify-between mb-2">
+                    <span id="statusText" class="text-sm font-medium text-indigo-600">Initialisation...</span>
+                    <span id="percentageText" class="text-sm font-medium text-slate-500">0%</span>
+                </div>
+                <div class="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                    <div id="progressBar" class="bg-indigo-600 h-3 rounded-full transition-all duration-500 ease-out" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="resultsSection" class="hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-slate-800">Résultats <span id="resultCount" class="text-sm font-normal text-slate-500 bg-slate-200 px-2 py-1 rounded-full ml-2">0</span></h2>
+                <button onclick="downloadResults()" class="text-indigo-600 hover:text-indigo-800 font-medium text-sm flex items-center gap-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Télécharger TXT
+                </button>
+            </div>
+            
+            <div class="bg-white rounded-2xl shadow-lg overflow-hidden border border-slate-100">
+                <div class="max-h-[600px] overflow-y-auto p-0">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-slate-50 sticky top-0">
+                            <tr>
+                                <th class="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200">Sous-domaine</th>
+                                <th class="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="resultsTableBody" class="divide-y divide-slate-100">
+                            <!-- Rows will be inserted here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        let currentDomain = "";
+
+        function handleEnter(e) {
+            if (e.key === 'Enter') startSearch();
+        }
+
+        function startSearch() {
+            const domain = document.getElementById('domainInput').value.trim();
+            if (!domain) return;
+
+            currentDomain = domain;
+            
+            // Reset UI
+            document.getElementById('resultsSection').classList.add('hidden');
+            document.getElementById('progressSection').classList.remove('hidden');
+            document.getElementById('progressBar').style.width = '0%';
+            document.getElementById('statusText').innerText = 'Démarrage...';
+            document.getElementById('percentageText').innerText = '0%';
+            document.getElementById('resultsTableBody').innerHTML = '';
+            document.getElementById('searchBtn').disabled = true;
+            document.getElementById('searchBtn').classList.add('opacity-50', 'cursor-not-allowed');
+
+            // Start EventSource
+            const eventSource = new EventSource(`/stream_search/${domain}`);
+
+            eventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                
+                // Update Progress
+                if (data.progress) {
+                    document.getElementById('progressBar').style.width = data.progress + '%';
+                    document.getElementById('percentageText').innerText = data.progress + '%';
+                }
+                if (data.message) {
+                    document.getElementById('statusText').innerText = data.message;
+                }
+
+                // Handle Finish
+                if (data.step === 'finish') {
+                    eventSource.close();
+                    displayResults(data.data);
+                    document.getElementById('searchBtn').disabled = false;
+                    document.getElementById('searchBtn').classList.remove('opacity-50', 'cursor-not-allowed');
+                    document.getElementById('statusText').innerText = 'Terminé !';
+                }
+            };
+
+            eventSource.onerror = function() {
+                eventSource.close();
+                document.getElementById('statusText').innerText = 'Erreur lors de la recherche.';
+                document.getElementById('searchBtn').disabled = false;
+                document.getElementById('searchBtn').classList.remove('opacity-50', 'cursor-not-allowed');
+            };
+        }
+
+        function displayResults(subdomains) {
+            const tbody = document.getElementById('resultsTableBody');
+            document.getElementById('resultCount').innerText = subdomains.length;
+            document.getElementById('resultsSection').classList.remove('hidden');
+
+            if (subdomains.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="2" class="px-6 py-8 text-center text-slate-500">Aucun sous-domaine trouvé.</td></tr>';
+                return;
+            }
+
+            let html = '';
+            subdomains.forEach(sub => {
+                html += `
+                    <tr class="hover:bg-slate-50 transition-colors">
+                        <td class="px-6 py-3 text-sm text-slate-700 font-mono">${sub}</td>
+                        <td class="px-6 py-3 text-right">
+                            <a href="http://${sub}" target="_blank" class="text-indigo-500 hover:text-indigo-700 text-xs font-medium px-3 py-1 rounded-full bg-indigo-50 hover:bg-indigo-100 transition-colors">
+                                Visiter &rarr;
+                            </a>
+                        </td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+        }
+
+        function downloadResults() {
+            if (!currentDomain) return;
+            // Since the backend already saves the file, we can just link to it or trigger a download.
+            // But for simplicity, let's just let the user know it's on the server or re-download from client side list.
+            // Actually, let's just open the file if we can, or re-generate a blob.
+            // Since we have the data in the table, let's generate a blob.
+            
+            const rows = document.querySelectorAll('#resultsTableBody tr td:first-child');
+            let content = "";
+            rows.forEach(td => content += td.innerText + "\n");
+            
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `subdomains_${currentDomain}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
