@@ -1,0 +1,80 @@
+# Python compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+
+# Virtual environments
+env/
+venv/
+.venv/
+venv.bak/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Pyinstaller
+*.manifest
+*.spec
+
+# Mypy
+.mypy_cache/
+
+# Environment variables / secrets
+.env
+.env.*
+.env.local
+secrets.*
+credentials*
+*.pem
+*.key
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# OneDrive or Office temp files
+~$*
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# Project-specific outputs
+resultats/
+resultats/**
+
+# Ignore other generated files
+*.pyc
+*.pyo
+
+# Keep the repo clean
+node_modules/
+
+# End of .gitignore
