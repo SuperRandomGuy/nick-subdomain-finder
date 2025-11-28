@@ -70,6 +70,42 @@ def fetch_alienvault(domain):
         print(f"    Erreur AlienVault: {e}")
     return subdomains
 
+def fetch_anubis(domain):
+    print("  - Interrogation de Anubis...")
+    url = f"https://jldc.me/anubis/subdomains/{domain}"
+    subdomains = set()
+    try:
+        # User-Agent parfois nécessaire pour éviter les blocages
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+        response = requests.get(url, headers=headers, timeout=20)
+        if response.status_code == 200:
+            data = response.json()
+            # Anubis renvoie une liste directe de strings
+            for sub in data:
+                sub = sub.strip().lower()
+                if sub.endswith(domain):
+                    subdomains.add(sub)
+    except Exception as e:
+        print(f"    Erreur Anubis: {e}")
+    return subdomains
+
+def fetch_threatminer(domain):
+    print("  - Interrogation de ThreatMiner...")
+    url = f"https://api.threatminer.org/v2/domain.php?q={domain}&rt=5"
+    subdomains = set()
+    try:
+        response = requests.get(url, timeout=20)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('status_code') == '200' and 'results' in data:
+                for sub in data['results']:
+                    sub = sub.strip().lower()
+                    if sub.endswith(domain):
+                        subdomains.add(sub)
+    except Exception as e:
+        print(f"    Erreur ThreatMiner: {e}")
+    return subdomains
+
 def find_subdomains_iterative(domain):
     """
     Générateur qui renvoie la progression et les résultats.
@@ -77,26 +113,46 @@ def find_subdomains_iterative(domain):
     """
     yield {"step": "init", "message": f"Démarrage de la recherche pour {domain}...", "progress": 5}
     
-    results = set()
+    all_results = set()
     
-    yield {"step": "crtsh", "message": "Interrogation de crt.sh...", "progress": 10}
-    results.update(fetch_crtsh(domain))
-    yield {"step": "crtsh_done", "message": "crt.sh terminé", "progress": 40}
+    # Liste des sources à interroger : (Nom, Fonction, PoidsProgression)
+    # On garde crt.sh pour la fin car souvent plus lent/instable
+    sources = [
+        ("HackerTarget", fetch_hackertarget, 15),
+        ("AlienVault", fetch_alienvault, 15),
+        ("Anubis", fetch_anubis, 15),
+        ("ThreatMiner", fetch_threatminer, 15),
+        ("crt.sh", fetch_crtsh, 30) # Plus gros poids car plus long
+    ]
     
-    yield {"step": "hackertarget", "message": "Interrogation de HackerTarget...", "progress": 45}
-    results.update(fetch_hackertarget(domain))
-    yield {"step": "hackertarget_done", "message": "HackerTarget terminé", "progress": 70}
+    current_progress = 5
     
-    yield {"step": "alienvault", "message": "Interrogation de AlienVault OTX...", "progress": 75}
-    results.update(fetch_alienvault(domain))
-    yield {"step": "alienvault_done", "message": "AlienVault terminé", "progress": 95}
+    for name, func, weight in sources:
+        yield {"step": name.lower(), "message": f"Interrogation de {name}...", "progress": current_progress}
+        
+        # Appel de la fonction de récupération
+        new_subs = func(domain)
+        
+        # Calcul des nouveaux résultats uniques pour ce lot
+        unique_new = new_subs - all_results
+        if unique_new:
+            all_results.update(unique_new)
+            # On envoie immédiatement les nouveaux résultats trouvés
+            yield {
+                "step": "partial_result", 
+                "source": name, 
+                "new_subdomains": sorted(list(unique_new))
+            }
+            
+        current_progress += weight
+        yield {"step": f"{name.lower()}_done", "message": f"{name} terminé ({len(new_subs)} trouvés)", "progress": current_progress}
     
     # Sauvegarde
     yield {"step": "saving", "message": "Sauvegarde des résultats...", "progress": 98}
-    save_to_file(domain, results)
+    save_to_file(domain, all_results)
     
-    final_list = sorted(list(results))
-    yield {"step": "finish", "message": f"Terminé ! {len(final_list)} sous-domaines trouvés.", "progress": 100, "data": final_list}
+    final_list = sorted(list(all_results))
+    yield {"step": "finish", "message": f"Terminé ! {len(final_list)} sous-domaines trouvés au total.", "progress": 100, "data": final_list}
 
 def save_to_file(domain, new_subdomains):
     # Création du dossier de résultats

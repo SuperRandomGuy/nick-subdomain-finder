@@ -111,6 +111,9 @@
 
             // Start EventSource
             const eventSource = new EventSource(`/stream_search/${domain}`);
+            
+            // Keep track of total count
+            let totalCount = 0;
 
             eventSource.onmessage = function(event) {
                 const data = JSON.parse(event.data);
@@ -123,14 +126,21 @@
                 if (data.message) {
                     document.getElementById('statusText').innerText = data.message;
                 }
+                
+                // Handle Partial Results
+                if (data.step === 'partial_result' && data.new_subdomains) {
+                    appendResults(data.new_subdomains);
+                    totalCount += data.new_subdomains.length;
+                    document.getElementById('resultCount').innerText = totalCount;
+                }
 
                 // Handle Finish
                 if (data.step === 'finish') {
                     eventSource.close();
-                    displayResults(data.data);
+                    // displayResults(data.data); // No longer needed as we append incrementally
                     document.getElementById('searchBtn').disabled = false;
                     document.getElementById('searchBtn').classList.remove('opacity-50', 'cursor-not-allowed');
-                    document.getElementById('statusText').innerText = 'Terminé !';
+                    document.getElementById('statusText').innerText = data.message;
                 }
             };
 
@@ -141,21 +151,15 @@
                 document.getElementById('searchBtn').classList.remove('opacity-50', 'cursor-not-allowed');
             };
         }
-
-        function displayResults(subdomains) {
+        
+        function appendResults(subdomains) {
             const tbody = document.getElementById('resultsTableBody');
-            document.getElementById('resultCount').innerText = subdomains.length;
             document.getElementById('resultsSection').classList.remove('hidden');
-
-            if (subdomains.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="2" class="px-6 py-8 text-center text-slate-500">Aucun sous-domaine trouvé.</td></tr>';
-                return;
-            }
-
+            
             let html = '';
             subdomains.forEach(sub => {
                 html += `
-                    <tr class="hover:bg-slate-50 transition-colors">
+                    <tr class="hover:bg-slate-50 transition-colors animate-fade-in">
                         <td class="px-6 py-3 text-sm text-slate-700 font-mono">${sub}</td>
                         <td class="px-6 py-3 text-right">
                             <a href="http://${sub}" target="_blank" class="text-indigo-500 hover:text-indigo-700 text-xs font-medium px-3 py-1 rounded-full bg-indigo-50 hover:bg-indigo-100 transition-colors">
@@ -165,7 +169,22 @@
                     </tr>
                 `;
             });
-            tbody.innerHTML = html;
+            // Insert at the beginning or end? Usually end is better for logs, but beginning is better for visibility.
+            // Let's append to end.
+            tbody.insertAdjacentHTML('beforeend', html);
+        }
+
+        function displayResults(subdomains) {
+            // Legacy function, kept just in case but not used in streaming mode
+            const tbody = document.getElementById('resultsTableBody');
+            document.getElementById('resultCount').innerText = subdomains.length;
+            document.getElementById('resultsSection').classList.remove('hidden');
+
+            if (subdomains.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="2" class="px-6 py-8 text-center text-slate-500">Aucun sous-domaine trouvé.</td></tr>';
+                return;
+            }
+            // ...
         }
 
         function downloadResults() {
