@@ -1,7 +1,7 @@
 import requests
 import sys
 import os
-
+import re
 import time
 
 def fetch_crtsh(domain):
@@ -106,6 +106,98 @@ def fetch_threatminer(domain):
         print(f"    Erreur ThreatMiner: {e}")
     return subdomains
 
+def fetch_threatcrowd(domain):
+    print("  - Interrogation de ThreatCrowd...")
+    # L'API de ThreatCrowd est parfois capricieuse ou derrière Cloudflare
+    url = f"http://ci-www.threatcrowd.org/searchApi/v2/domain/report/?domain={domain}"
+    subdomains = set()
+    try:
+        # On ajoute un User-Agent pour éviter certains blocages
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+        response = requests.get(url, headers=headers, timeout=25)
+        
+        if response.status_code == 200:
+            try:
+                data = response.json()
+                if data.get('response_code') == '1' and 'subdomains' in data:
+                    for sub in data['subdomains']:
+                        sub = sub.strip().lower()
+                        if sub.endswith(domain):
+                            subdomains.add(sub)
+            except ValueError:
+                # Si le JSON est invalide, on ignore silencieusement ou on log
+                print("    ThreatCrowd a renvoyé une réponse non-JSON (probablement une erreur serveur ou rate limit).")
+        elif response.status_code == 503:
+             print("    ThreatCrowd est indisponible (503).")
+    except Exception as e:
+        print(f"    Erreur ThreatCrowd: {e}")
+    return subdomains
+
+def fetch_sonar(domain):
+    print("  - Interrogation de Sonar Omnisint...")
+    url = f"https://sonar.omnisint.io/subdomains/{domain}"
+    subdomains = set()
+    try:
+        response = requests.get(url, timeout=20)
+        if response.status_code == 200:
+            data = response.json()
+            for sub in data:
+                sub = sub.strip().lower()
+                if sub.endswith(domain):
+                    subdomains.add(sub)
+    except Exception as e:
+        print(f"    Erreur Sonar: {e}")
+    return subdomains
+
+def fetch_wayback(domain):
+    print("  - Interrogation de Wayback Machine...")
+    url = f"http://web.archive.org/cdx/search/cdx?url=*.{domain}/*&output=json&fl=original&collapse=urlkey"
+    subdomains = set()
+    try:
+        response = requests.get(url, timeout=30)
+        if response.status_code == 200:
+            data = response.json()
+            # Skip header row if present
+            if data and len(data) > 0 and data[0] == ["original"]:
+                data = data[1:]
+            
+            for entry in data:
+                # entry is like ["http://sub.example.com/path"]
+                if entry:
+                    url_val = entry[0]
+                    # Extract domain from URL
+                    parts = url_val.split('://')
+                    if len(parts) > 1:
+                        host = parts[1].split('/')[0]
+                    else:
+                        host = parts[0].split('/')[0]
+                    
+                    # Remove port if any
+                    host = host.split(':')[0]
+                    
+                    host = host.strip().lower()
+                    if host.endswith(domain):
+                        subdomains.add(host)
+    except Exception as e:
+        print(f"    Erreur Wayback: {e}")
+    return subdomains
+
+def fetch_rapiddns(domain):
+    print("  - Interrogation de RapidDNS...")
+    url = f"https://rapiddns.io/subdomain/{domain}?full=1"
+    subdomains = set()
+    try:
+        response = requests.get(url, timeout=20)
+        if response.status_code == 200:
+            # Pattern to find domains ending with .domain in table cells
+            pattern = r'<td>\s*([\w\.-]+\.' + re.escape(domain) + r')\s*</td>'
+            matches = re.findall(pattern, response.text)
+            for sub in matches:
+                subdomains.add(sub.strip().lower())
+    except Exception as e:
+        print(f"    Erreur RapidDNS: {e}")
+    return subdomains
+
 def find_subdomains_iterative(domain):
     """
     Générateur qui renvoie la progression et les résultats.
@@ -118,11 +210,15 @@ def find_subdomains_iterative(domain):
     # Liste des sources à interroger : (Nom, Fonction, PoidsProgression)
     # On garde crt.sh pour la fin car souvent plus lent/instable
     sources = [
-        ("HackerTarget", fetch_hackertarget, 15),
-        ("AlienVault", fetch_alienvault, 15),
-        ("Anubis", fetch_anubis, 15),
-        ("ThreatMiner", fetch_threatminer, 15),
-        ("crt.sh", fetch_crtsh, 30) # Plus gros poids car plus long
+        ("HackerTarget", fetch_hackertarget, 10),
+        ("AlienVault", fetch_alienvault, 10),
+        ("Anubis", fetch_anubis, 10),
+        ("ThreatMiner", fetch_threatminer, 10),
+        ("ThreatCrowd", fetch_threatcrowd, 10),
+        ("RapidDNS", fetch_rapiddns, 10),
+        ("Wayback", fetch_wayback, 15),
+        ("crt.sh", fetch_crtsh, 20), # Plus gros poids car plus long
+        ("Sonar", fetch_sonar, 10)
     ]
     
     current_progress = 5
