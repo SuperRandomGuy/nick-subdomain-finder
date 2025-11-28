@@ -59,12 +59,16 @@
         <div id="resultsSection" class="hidden">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-2xl font-bold text-slate-800">Résultats <span id="resultCount" class="text-sm font-normal text-slate-500 bg-slate-200 px-2 py-1 rounded-full ml-2">0</span></h2>
-                <button onclick="downloadResults()" class="text-indigo-600 hover:text-indigo-800 font-medium text-sm flex items-center gap-1">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                    Télécharger TXT
-                </button>
+                <div class="flex items-center gap-4">
+                    <input type="text" id="filterInput" placeholder="Filtrer..." onkeyup="filterResults()" 
+                        class="px-4 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white shadow-sm">
+                    <button onclick="downloadResults()" class="text-indigo-600 hover:text-indigo-800 font-medium text-sm flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Télécharger TXT
+                    </button>
+                </div>
             </div>
             
             <div class="bg-white rounded-2xl shadow-lg overflow-hidden border border-slate-100">
@@ -88,6 +92,7 @@
 
     <script>
         let currentDomain = "";
+        let totalCount = 0;
 
         function handleEnter(e) {
             if (e.key === 'Enter') startSearch();
@@ -98,6 +103,7 @@
             if (!domain) return;
 
             currentDomain = domain;
+            totalCount = 0;
             
             // Reset UI
             document.getElementById('resultsSection').classList.add('hidden');
@@ -106,14 +112,12 @@
             document.getElementById('statusText').innerText = 'Démarrage...';
             document.getElementById('percentageText').innerText = '0%';
             document.getElementById('resultsTableBody').innerHTML = '';
+            document.getElementById('filterInput').value = ''; // Reset filter
             document.getElementById('searchBtn').disabled = true;
             document.getElementById('searchBtn').classList.add('opacity-50', 'cursor-not-allowed');
 
             // Start EventSource
             const eventSource = new EventSource(`/stream_search/${domain}`);
-            
-            // Keep track of total count
-            let totalCount = 0;
 
             eventSource.onmessage = function(event) {
                 const data = JSON.parse(event.data);
@@ -131,13 +135,12 @@
                 if (data.step === 'partial_result' && data.new_subdomains) {
                     appendResults(data.new_subdomains);
                     totalCount += data.new_subdomains.length;
-                    document.getElementById('resultCount').innerText = totalCount;
+                    filterResults(); // Update count label and apply filter if any
                 }
 
                 // Handle Finish
                 if (data.step === 'finish') {
                     eventSource.close();
-                    // displayResults(data.data); // No longer needed as we append incrementally
                     document.getElementById('searchBtn').disabled = false;
                     document.getElementById('searchBtn').classList.remove('opacity-50', 'cursor-not-allowed');
                     document.getElementById('statusText').innerText = data.message;
@@ -169,9 +172,33 @@
                     </tr>
                 `;
             });
-            // Insert at the beginning or end? Usually end is better for logs, but beginning is better for visibility.
-            // Let's append to end.
             tbody.insertAdjacentHTML('beforeend', html);
+        }
+
+        function filterResults() {
+            const filterValue = document.getElementById('filterInput').value.toLowerCase().trim();
+            const rows = document.querySelectorAll('#resultsTableBody tr');
+            let visibleCount = 0;
+            
+            rows.forEach(row => {
+                const cell = row.querySelector('td');
+                if (cell) {
+                    const text = cell.innerText.toLowerCase();
+                    if (text.includes(filterValue)) {
+                        row.style.display = '';
+                        visibleCount++;
+                    } else {
+                        row.style.display = 'none';
+                    }
+                }
+            });
+            
+            const countLabel = document.getElementById('resultCount');
+            if (filterValue) {
+                countLabel.innerText = `${visibleCount} / ${totalCount}`;
+            } else {
+                countLabel.innerText = totalCount;
+            }
         }
 
         function displayResults(subdomains) {
@@ -189,10 +216,6 @@
 
         function downloadResults() {
             if (!currentDomain) return;
-            // Since the backend already saves the file, we can just link to it or trigger a download.
-            // But for simplicity, let's just let the user know it's on the server or re-download from client side list.
-            // Actually, let's just open the file if we can, or re-generate a blob.
-            // Since we have the data in the table, let's generate a blob.
             
             const rows = document.querySelectorAll('#resultsTableBody tr td:first-child');
             let content = "";
